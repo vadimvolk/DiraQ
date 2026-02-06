@@ -99,6 +99,7 @@ function dirq --description "dirq wrapper with automatic directory change"
     else
         command dirq $argv
     end
+    commandline -f repaint
 end
 '''
 

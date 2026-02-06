@@ -95,6 +95,107 @@ class TestFolderScanning:
             assert result == [subdir]
 
 
+class TestFilterIntermediateFolders:
+    """Test filtering of intermediate pass-through folders."""
+
+    def test_leaf_folders_kept(self) -> None:
+        """Leaf folders (no subdirectories) are always kept."""
+        from dirq.navigator import filter_intermediate_folders
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            leaf1 = root / "leaf1"
+            leaf2 = root / "leaf2"
+            leaf1.mkdir()
+            leaf2.mkdir()
+
+            result = filter_intermediate_folders([leaf1, leaf2])
+            assert set(result) == {leaf1, leaf2}
+
+    def test_intermediate_folder_without_files_filtered(self) -> None:
+        """Intermediate folder with all subdirs in list and no files is filtered out."""
+        from dirq.navigator import filter_intermediate_folders
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            parent = root / "parent"
+            child1 = parent / "child1"
+            child2 = parent / "child2"
+            parent.mkdir()
+            child1.mkdir()
+            child2.mkdir()
+
+            # parent has subdirs child1 and child2, both in the list, no files
+            result = filter_intermediate_folders([parent, child1, child2])
+            assert set(result) == {child1, child2}
+
+    def test_intermediate_folder_with_files_kept(self) -> None:
+        """Intermediate folder with files is kept even if all subdirs are in list."""
+        from dirq.navigator import filter_intermediate_folders
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            parent = root / "parent"
+            child1 = parent / "child1"
+            child2 = parent / "child2"
+            parent.mkdir()
+            child1.mkdir()
+            child2.mkdir()
+            (parent / "README.md").touch()
+
+            result = filter_intermediate_folders([parent, child1, child2])
+            assert set(result) == {parent, child1, child2}
+
+    def test_folder_with_partial_subdirs_in_list_kept(self) -> None:
+        """Folder is kept if not all its subdirs are in the list."""
+        from dirq.navigator import filter_intermediate_folders
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            parent = root / "parent"
+            child1 = parent / "child1"
+            child2 = parent / "child2"
+            parent.mkdir()
+            child1.mkdir()
+            child2.mkdir()
+
+            # Only child1 in list, child2 not included
+            result = filter_intermediate_folders([parent, child1])
+            assert set(result) == {parent, child1}
+
+    def test_empty_folder_kept(self) -> None:
+        """Empty folder (no files, no subdirs) is kept."""
+        from dirq.navigator import filter_intermediate_folders
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            empty = root / "empty"
+            empty.mkdir()
+
+            result = filter_intermediate_folders([empty])
+            assert result == [empty]
+
+    def test_multi_level_filtering(self) -> None:
+        """Multi-level tree filters all pass-through intermediates."""
+        from dirq.navigator import filter_intermediate_folders
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            # sources/ergohaven/fw, sources/ergohaven/hw, sources/vadimvolk/repo1
+            ergo = root / "ergohaven"
+            fw = ergo / "fw"
+            hw = ergo / "hw"
+            vadim = root / "vadimvolk"
+            repo1 = vadim / "repo1"
+            for d in [ergo, fw, hw, vadim, repo1]:
+                d.mkdir(parents=True)
+
+            folders = [ergo, fw, hw, vadim, repo1]
+            result = filter_intermediate_folders(folders)
+            # Both ergo and vadim are pass-through (no files, all subdirs present)
+            assert set(result) == {fw, hw, repo1}
+
+
 class TestNavigationListBuilding:
     """Test navigation list building and display formatting."""
 
@@ -248,6 +349,47 @@ class TestNavigationListBuilding:
 
         with pytest.raises(ValueError, match="no bookmarks in config.*dirq save"):
             build_navigation_list([], None, None)
+
+    def test_depth_n_filters_intermediate_folders(self) -> None:
+        """Depth N filters out intermediate pass-through folders."""
+        from dirq.navigator import build_navigation_list
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir).resolve()
+            parent = root / "parent"
+            child1 = parent / "child1"
+            child2 = parent / "child2"
+            parent.mkdir()
+            child1.mkdir()
+            child2.mkdir()
+
+            entries = [BookmarkEntry(name="src", depth=2, path=root)]
+
+            nav_entries, warnings = build_navigation_list(entries, None, None)
+
+            displays = {e["display"] for e in nav_entries}
+            # parent is filtered out (no files, all subdirs present)
+            assert "src:parent/child1" in displays
+            assert "src:parent/child2" in displays
+            assert "src:parent" not in displays
+            assert warnings == []
+
+    def test_depth_0_empty_folder_displayed(self) -> None:
+        """Empty folder with depth 0 is always displayed."""
+        from dirq.navigator import build_navigation_list
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir).resolve()
+            empty = root / "empty"
+            empty.mkdir()
+
+            entries = [BookmarkEntry(name="empty", depth=0, path=empty)]
+
+            nav_entries, warnings = build_navigation_list(entries, None, None)
+
+            assert len(nav_entries) == 1
+            assert nav_entries[0]["display"] == f"empty:{empty}"
+            assert warnings == []
 
     def test_special_characters_in_paths(self) -> None:
         """Special characters in paths are handled correctly."""

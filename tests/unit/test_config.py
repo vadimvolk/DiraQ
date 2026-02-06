@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from dirq.config import BookmarkEntry, parse_line, read_config, serialize_entry, write_config
+from dirq.config import BookmarkEntry, parse_line, read_comment_header, read_config, serialize_entry, write_config
 
 
 class TestBookmarkEntry:
@@ -193,6 +193,66 @@ repos\t1\t/another/valid"""
             read_config(config_path)
 
 
+class TestReadCommentHeader:
+    """Test reading comment headers from config files."""
+
+    def test_read_comment_header(self) -> None:
+        """Read leading comment lines from a config file."""
+        content = "# line one\n# line two\nsource\t2\t/sources\n"
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".rc") as f:
+            f.write(content)
+            f.flush()
+            config_path = Path(f.name)
+
+        try:
+            header = read_comment_header(config_path)
+            assert header == "# line one\n# line two\n"
+        finally:
+            config_path.unlink()
+
+    def test_read_comment_header_with_blank_lines(self) -> None:
+        """Read leading comments and blank lines."""
+        content = "# comment\n\n# another\nsource\t2\t/sources\n"
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".rc") as f:
+            f.write(content)
+            f.flush()
+            config_path = Path(f.name)
+
+        try:
+            header = read_comment_header(config_path)
+            assert header == "# comment\n\n# another\n"
+        finally:
+            config_path.unlink()
+
+    def test_read_comment_header_no_comments(self) -> None:
+        """Return empty string when no leading comments."""
+        content = "source\t2\t/sources\n"
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".rc") as f:
+            f.write(content)
+            f.flush()
+            config_path = Path(f.name)
+
+        try:
+            header = read_comment_header(config_path)
+            assert header == ""
+        finally:
+            config_path.unlink()
+
+    def test_read_comment_header_only_comments(self) -> None:
+        """Return all lines when file is only comments."""
+        content = "# just comments\n# nothing else\n"
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".rc") as f:
+            f.write(content)
+            f.flush()
+            config_path = Path(f.name)
+
+        try:
+            header = read_comment_header(config_path)
+            assert header == "# just comments\n# nothing else\n"
+        finally:
+            config_path.unlink()
+
+
 class TestWriteConfig:
     """Test writing config files."""
 
@@ -236,6 +296,18 @@ class TestWriteConfig:
             content = config_path.read_text()
             assert content.strip() == ""
 
+    def test_write_config_with_header(self) -> None:
+        """Write entries with a comment header."""
+        entries = [BookmarkEntry(name="source", depth=2, path=Path("/sources"))]
+        header = "# my header\n# line two\n"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.rc"
+            write_config(config_path, entries, header=header)
+
+            content = config_path.read_text()
+            assert content.startswith("# my header\n# line two\n")
+            assert "source\t2\t/sources" in content
+
 
 class TestInitConfig:
     """Test init config functionality."""
@@ -250,6 +322,9 @@ class TestInitConfig:
 
             assert config_path.exists()
             assert result == f"Created config at {config_path}"
+
+            content = config_path.read_text()
+            assert "this file is regenerated when adding or removing folders" in content
 
     def test_inform_when_config_already_exists(self) -> None:
         """Inform user when config already exists (preserve existing)."""
@@ -446,8 +521,35 @@ class TestSaveBookmark:
             with pytest.raises(ValueError, match="Depth must be"):
                 save_bookmark(config_path, path=save_dir, depth=11, name="test")
 
-    def test_config_missing_error(self) -> None:
-        """Config missing produces clear error."""
+    def test_reject_nonexistent_path(self) -> None:
+        """Reject path that does not exist on disk."""
+        from dirq.config import save_bookmark
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.rc"
+            config_path.touch()
+
+            nonexistent = Path(tmpdir) / "does-not-exist"
+
+            with pytest.raises(ValueError, match="does not exist"):
+                save_bookmark(config_path, path=nonexistent, name="test")
+
+    def test_reject_file_path(self) -> None:
+        """Reject path that is a file, not a directory."""
+        from dirq.config import save_bookmark
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.rc"
+            config_path.touch()
+
+            file_path = Path(tmpdir) / "afile.txt"
+            file_path.touch()
+
+            with pytest.raises(ValueError, match="not a directory"):
+                save_bookmark(config_path, path=file_path, name="test")
+
+    def test_config_auto_created_when_missing(self) -> None:
+        """Config is auto-created when saving to a missing config file."""
         from dirq.config import save_bookmark
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -455,8 +557,12 @@ class TestSaveBookmark:
             save_dir = Path(tmpdir) / "test"
             save_dir.mkdir()
 
-            with pytest.raises(FileNotFoundError, match="Config file not found"):
-                save_bookmark(config_path, path=save_dir, name="test")
+            save_bookmark(config_path, path=save_dir, name="test")
+
+            assert config_path.exists()
+            entries = read_config(config_path)
+            assert len(entries) == 1
+            assert entries[0].name == "test"
 
     def test_config_corrupted_error(self) -> None:
         """Config corrupted produces clear error."""
@@ -471,6 +577,24 @@ class TestSaveBookmark:
 
             with pytest.raises(ValueError, match="Failed to parse"):
                 save_bookmark(config_path, path=save_dir, name="test")
+
+    def test_save_preserves_comment_header(self) -> None:
+        """Comment header is preserved after saving a bookmark."""
+        from dirq.config import save_bookmark
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.rc"
+            header = "# my custom header\n# second line\n"
+            config_path.write_text(header)
+
+            save_dir = Path(tmpdir) / "test"
+            save_dir.mkdir()
+
+            save_bookmark(config_path, path=save_dir, name="test")
+
+            content = config_path.read_text()
+            assert content.startswith(header)
+            assert "test\t0\t" in content
 
 
 class TestDeleteBookmark:
@@ -587,3 +711,20 @@ class TestDeleteBookmark:
 
             with pytest.raises(ValueError, match="Failed to parse"):
                 delete_bookmark(config_path, "test")
+
+    def test_delete_preserves_comment_header(self) -> None:
+        """Comment header is preserved after deleting a bookmark."""
+        from dirq.config import delete_bookmark
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.rc"
+            dir1 = Path(tmpdir) / "dir1"
+            dir1.mkdir()
+
+            header = "# custom comment\n# another line\n"
+            config_path.write_text(header + f"proj1\t0\t{dir1}\n")
+
+            delete_bookmark(config_path, "proj1")
+
+            content = config_path.read_text()
+            assert content.startswith(header)

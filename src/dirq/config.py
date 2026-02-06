@@ -75,6 +75,30 @@ def serialize_entry(entry: BookmarkEntry) -> str:
     return f"{entry.name}\t{entry.depth}\t{entry.path}"
 
 
+def read_comment_header(config_path: Path) -> str:
+    """
+    Read leading comment and blank lines from a config file.
+
+    Args:
+        config_path: Path to the config file.
+
+    Returns:
+        String containing all leading comment/blank lines, including newlines.
+        Returns empty string if file doesn't exist.
+    """
+    if not config_path.exists():
+        return ""
+    header_lines: list[str] = []
+    with config_path.open("r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.rstrip()
+            if not stripped or stripped.startswith("#"):
+                header_lines.append(line)
+            else:
+                break
+    return "".join(header_lines)
+
+
 def read_config(config_path: Path) -> list[BookmarkEntry]:
     """
     Read and parse a config file.
@@ -105,18 +129,23 @@ def read_config(config_path: Path) -> list[BookmarkEntry]:
     return entries
 
 
-def write_config(config_path: Path, entries: list[BookmarkEntry]) -> None:
+def write_config(
+    config_path: Path, entries: list[BookmarkEntry], header: str = ""
+) -> None:
     """
     Write entries to a config file.
 
     Args:
         config_path: Path to the config file.
         entries: List of BookmarkEntry objects to write.
+        header: Comment header to write before entries.
     """
     # Create parent directories if needed
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     with config_path.open("w", encoding="utf-8") as f:
+        if header:
+            f.write(header)
         for entry in entries:
             f.write(serialize_entry(entry) + "\n")
 
@@ -143,8 +172,12 @@ def init_config(config_path: Path) -> str:
     # Create parent directories if needed
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Create empty config file
-    config_path.touch()
+    # Create config file with format comment
+    config_path.write_text(
+        "# dirq bookmarks: name<TAB>depth<TAB>/absolute/path\n"
+        "# depth 0 = folder itself, 1-10 = scan subfolders to that level\n"
+        "# this file is regenerated when adding or removing folders\n"
+    )
 
     return f"Created config at {config_path}"
 
@@ -168,10 +201,14 @@ def save_bookmark(
         Success confirmation message.
 
     Raises:
-        FileNotFoundError: If config file doesn't exist.
         ValueError: If validation fails or duplicates detected.
     """
-    # Read existing config
+    # Auto-create config if missing
+    if not config_path.exists():
+        init_config(config_path)
+
+    # Read existing config and comment header
+    header = read_comment_header(config_path)
     entries = read_config(config_path)
 
     # Apply defaults
@@ -186,6 +223,12 @@ def save_bookmark(
 
     if name is None:
         name = path.name
+
+    # Validate that path exists on disk
+    if not path.exists():
+        raise ValueError(f"error: path '{path}' does not exist")
+    if not path.is_dir():
+        raise ValueError(f"error: path '{path}' is not a directory")
 
     # Create new entry (this validates depth, name, path)
     new_entry = BookmarkEntry(name=name, depth=depth, path=path)
@@ -202,7 +245,7 @@ def save_bookmark(
 
     # Append new entry and write config
     entries.append(new_entry)
-    write_config(config_path, entries)
+    write_config(config_path, entries, header=header)
 
     return f"Saved '{name}' -> {path} (depth: {depth})"
 
@@ -225,7 +268,8 @@ def delete_bookmark(config_path: Path, name_or_path: str) -> str:
         FileNotFoundError: If config file doesn't exist.
         ValueError: If no matching bookmark found or config corrupted.
     """
-    # Read existing config
+    # Read existing config and comment header
+    header = read_comment_header(config_path)
     entries = read_config(config_path)
 
     # Try to find by name first
@@ -250,6 +294,6 @@ def delete_bookmark(config_path: Path, name_or_path: str) -> str:
         raise ValueError(f"error: no bookmark found matching '{name_or_path}'")
 
     # Write updated config
-    write_config(config_path, entries)
+    write_config(config_path, entries, header=header)
 
     return f"Deleted '{deleted_name}'"

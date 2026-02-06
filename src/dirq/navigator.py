@@ -49,6 +49,56 @@ def scan_folders(root: Path, max_depth: int) -> list[Path]:
     return results
 
 
+def _has_files(path: Path) -> bool:
+    """Check if a directory directly contains any files (not subdirectories)."""
+    try:
+        for entry in path.iterdir():
+            if entry.is_file():
+                return True
+    except (PermissionError, OSError):
+        pass
+    return False
+
+
+def filter_intermediate_folders(folders: list[Path]) -> list[Path]:
+    """
+    Filter out intermediate folders whose subdirectories are all already
+    present in the list and that contain no files themselves.
+
+    A folder like /sources/ergohaven is removed if every subdirectory of
+    ergohaven/ is already in *folders* and ergohaven/ has no files.
+    Leaf folders and folders with files are always kept.
+    """
+    folder_set = set(folders)
+    result: list[Path] = []
+
+    for folder in folders:
+        try:
+            subdirs = [e for e in folder.iterdir() if e.is_dir()]
+        except (PermissionError, OSError):
+            subdirs = []
+
+        # Leaf folder (no subdirectories) → always keep
+        if not subdirs:
+            result.append(folder)
+            continue
+
+        # Keep if not every subdir is already in the list
+        all_subdirs_present = all(sd in folder_set for sd in subdirs)
+        if not all_subdirs_present:
+            result.append(folder)
+            continue
+
+        # Keep if the folder itself contains files
+        if _has_files(folder):
+            result.append(folder)
+            continue
+
+        # Otherwise it's a pure pass-through → skip
+
+    return result
+
+
 def build_navigation_list(
     entries: list[BookmarkEntry],
     only: list[str] | None,
@@ -104,6 +154,10 @@ def build_navigation_list(
 
         # Scan folders
         folders = scan_folders(entry.path, entry.depth)
+
+        # Filter out intermediate pass-through folders (depth > 0 only)
+        if entry.depth > 0:
+            folders = filter_intermediate_folders(folders)
 
         # Build display strings
         for folder in folders:
