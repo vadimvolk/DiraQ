@@ -2,6 +2,8 @@
 
 # dirq
 
+![CI](https://github.com/vadimvolk/DiraQ/actions/workflows/ci.yml/badge.svg)
+
 Быстрая навигация по папкам из командной строки с нечётким поиском через [fzf](https://github.com/junegunn/fzf). Сохраняйте директории как закладки с настраиваемой глубиной сканирования и мгновенно переходите в них.
 
 ## Требования

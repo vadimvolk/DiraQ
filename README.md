@@ -2,6 +2,8 @@
 
 # dirq
 
+![CI](https://github.com/vadimvolk/DiraQ/actions/workflows/ci.yml/badge.svg)
+
 Fast folder navigation CLI with fuzzy-finding powered by [fzf](https://github.com/junegunn/fzf). Bookmark directories with configurable scan depths and jump to them instantly.
 
 ## Prerequisites
