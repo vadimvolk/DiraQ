@@ -8,7 +8,6 @@ from dirq.config import delete_bookmark, init_config, read_config, save_bookmark
 from dirq.navigator import build_navigation_list, run_fzf
 from dirq.platform import get_config_path
 from dirq.shell import (
-    generate_shell_script,
     get_installation_instructions,
     install_completion,
     install_wrapper,
@@ -200,8 +199,9 @@ def handle_init_shell(args: Any) -> int:
         # Validate shell
         valid_shells = {"bash", "zsh", "fish"}
         if shell not in valid_shells:
+            valid = ", ".join(sorted(valid_shells))
             print(
-                f"error: Invalid shell '{shell}'. Must be one of: {', '.join(sorted(valid_shells))}",
+                f"error: Invalid shell '{shell}'. Must be one of: {valid}",
                 file=sys.stderr,
             )
             return 2

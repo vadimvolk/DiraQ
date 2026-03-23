@@ -119,15 +119,23 @@ complete -c dirq -n "__fish_use_subcommand" -a "delete" -d "Delete a bookmark"
 complete -c dirq -n "__fish_use_subcommand" -a "init" -d "Initialize config or shell integration"
 
 # Navigate completions
-complete -c dirq -n "__fish_seen_subcommand_from navigate" -l "only" -d "Include only specified bookmarks"
-complete -c dirq -n "__fish_seen_subcommand_from navigate" -l "except" -d "Exclude specified bookmarks"
+complete -c dirq -n "__fish_seen_subcommand_from navigate" \
+    -l "only" -d "Include only specified bookmarks"
+complete -c dirq -n "__fish_seen_subcommand_from navigate" \
+    -l "except" -d "Exclude specified bookmarks"
 
 # Init subcommands
-complete -c dirq -n '__fish_seen_subcommand_from init; and not __fish_seen_subcommand_from config shell' -a config -d 'Create default config file'
-complete -c dirq -n '__fish_seen_subcommand_from init; and not __fish_seen_subcommand_from config shell' -a shell -d 'Install shell integration'
+complete -c dirq \
+    -n '__fish_seen_subcommand_from init; and not __fish_seen_subcommand_from config shell' \
+    -a config -d 'Create default config file'
+complete -c dirq \
+    -n '__fish_seen_subcommand_from init; and not __fish_seen_subcommand_from config shell' \
+    -a shell -d 'Install shell integration'
 
 # Init shell completions
-complete -c dirq -n '__fish_seen_subcommand_from init; and __fish_seen_subcommand_from shell' -a 'bash zsh fish'
+complete -c dirq \
+    -n '__fish_seen_subcommand_from init; and __fish_seen_subcommand_from shell' \
+    -a 'bash zsh fish'
 '''
 
 

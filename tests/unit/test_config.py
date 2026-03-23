@@ -4,7 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from dirq.config import BookmarkEntry, parse_line, read_comment_header, read_config, serialize_entry, write_config
+from dirq.config import (
+    BookmarkEntry,
+    parse_line,
+    read_comment_header,
+    read_config,
+    serialize_entry,
+    write_config,
+)
 
 
 class TestBookmarkEntry:
